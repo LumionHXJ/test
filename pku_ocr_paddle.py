@@ -15,6 +15,8 @@ from paddleocr import PaddleOCR
 def dist(t1, t2):
     return ((t1[0]-t2[0])**2 + (t1[1]-t2[1])**2)**0.5
 
+def text_length_by_size(text):
+    return (len(text) + len([c for c in text if ord(c) >= 256])) / 2
 
 def gen_color():
     """Generate BGR color schemes."""
@@ -116,31 +118,67 @@ def draw_texts_by_pil(img,
         if draw_box:
             out_draw.line(box, fill=color, width=1)
         dirname, _ = os.path.split(os.path.abspath(__file__))
-        tmp_font_size = font_size
-        if tmp_font_size is None:
-            box_width = max(max_x - min_x, max_y - min_y)
-            tmp_font_size = int(0.9 * box_width / len(text))
+        
+        tmp_font_size = font_size       
+        
+        if dist(box[0:2], box[2:4]) > dist(box[0:2], box[6:]) or len(text)==1:
+            tan_x = abs(box[1] - box[3]) / (abs(box[0] - box[2]) + 1e-6)
+            if tan_x < np.tan(np.pi / 18):
+                horizental = True
+                if tmp_font_size is None:
+                    box_width = max(max_x - min_x, max_y - min_y)
+                    tmp_font_size_w = round(0.9 * box_width / text_length_by_size(text)) 
+                    tmp_font_size_h = round(min(max_x - min_x, max_y - min_y))
+                    tmp_font_size = min(tmp_font_size_h, tmp_font_size_w)
+            else:
+                horizental = False
+                dst = np.array(box, dtype=np.float32).reshape(4,2)
+                if tmp_font_size is None:
+                    tmp_font_size_w = round(0.9 * dist(box[0:2], box[2:4]) / text_length_by_size(text))
+                    tmp_font_size_h = round(dist(box[0:2], box[6:]))
+                    tmp_font_size = min(tmp_font_size_h, tmp_font_size_w)
+        else:
+            tan_x = abs(box[1] - box[7]) / (abs(box[0] - box[6]) + 1e-6)
+            if tan_x < np.tan(np.pi / 18):
+                horizental = True
+                if tmp_font_size is None:
+                    box_width = max(max_x - min_x, max_y - min_y)
+                    tmp_font_size_w = round(0.9 * box_width / text_length_by_size(text)) 
+                    tmp_font_size_h = round(min(max_x - min_x, max_y - min_y))
+                    tmp_font_size = min(tmp_font_size_h, tmp_font_size_w)
+            else:
+                horizental = False            
+                dst = np.array(box[2:]+box[0:2], dtype=np.float32).reshape(4,2)
+                if tmp_font_size is None:
+                    tmp_font_size = round(0.9 * dist(box[0:2], box[6:]) / text_length_by_size(text))
+                    tmp_font_size_h = round(dist(box[0:2], box[6:]))
+                    tmp_font_size = min(tmp_font_size_h, tmp_font_size_w)
         fnt = ImageFont.truetype(font_path, tmp_font_size)
-        if ori_point is None:
-            ori_point = (min_x + 1, min_y + 1), (max_x - 1, max_y - 1)
+
+        if horizental:
+            if ori_point is None:
+                ori_point = min_x + 1, min_y + 1
+            out_img = Image.fromarray(cv2.cvtColor(res_img, cv2.COLOR_BGR2RGB))
+            out_draw = ImageDraw.Draw(out_img)
+            out_draw.text(ori_point, text, font=fnt, fill=fill_color)
+            res_img = cv2.cvtColor(np.asarray(out_img), cv2.COLOR_RGB2BGR)
+            del out_draw
+            text_sizes.append(fnt.getsize(text))
+            continue
         
         out_img = Image.new('RGB', (h, w), color=(255, 255, 255))
         out_draw = ImageDraw.Draw(out_img)
         out_draw.text((0,0), text, font=fnt, fill=fill_color)
         tw, th = fnt.getsize(text)
         out_img = cv2.cvtColor(np.asarray(out_img)[:th, :tw], cv2.COLOR_RGB2BGR)
+        del out_draw
 
-        src = np.array([[0, 0], [tw, 0], [tw, th], [0, th]], dtype=np.float32)
-        if dist(box[0:2], box[2:4]) > dist(box[0:2], box[6:]) or len(text)==1:
-            dst = np.array(box, dtype=np.float32).reshape(4,2)
-        else:
-            dst = np.array(box[2:]+box[0:2], dtype=np.float32).reshape(4,2)
+        src = np.array([[0, 0], [tw, 0], [tw, th], [0, th]], dtype=np.float32)        
+
         M = cv2.getPerspectiveTransform(src, dst)
         res = cv2.warpPerspective(out_img, M, (w, h), flags=cv2.INTER_LINEAR, borderValue=(255, 255, 255))
         res_img = 255 - cv2.add((255 - res_img), (255 - res))
         text_sizes.append(fnt.getsize(text))
-
-    del out_draw
 
     if return_text_size:
         return res_img, text_sizes

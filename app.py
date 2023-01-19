@@ -18,7 +18,7 @@ from util import base64_to_pil, np_to_base64, pil_to_cv2
 # Declare a flask app
 app = Flask(__name__)
 
-checker = PKUOCRPP(use_gpu=False)
+checker = PKUOCRPP(use_gpu=True)
 #det_model_path = './work_dirs/release_models/fcenet_r50dcnv2_fpn_1500e_ctw1500_20211022-e326d7ec.pth'
 #rec_model_path = './work_dirs/release_models/epoch_20.pth'
 #checker = PKUOCR(det='FCE_CTW_DCNv2', recog='SAR_CN', det_ckpt=det_model_path, recog_ckpt=rec_model_path)
@@ -90,5 +90,5 @@ def predict():
 if __name__ == '__main__':
     # app.run(port=5000, threaded=False)
     # Serve the app with gevent
-    http_server = WSGIServer(('0.0.0.0', 4999), app)
+    http_server = WSGIServer(('0.0.0.0', 5000), app)
     http_server.serve_forever()
